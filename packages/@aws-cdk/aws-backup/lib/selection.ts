@@ -3,6 +3,14 @@ import { Construct, IResource, Resource } from '@aws-cdk/core';
 import { CfnBackupSelection } from './backup.generated';
 import { IBackupPlan } from './plan';
 
+export abstract class BackupResource {
+  public static fromDynamoDBTable(table: any): BackupResource {
+    return { resourceArn: table.tableArn };
+  }
+
+  public abstract readonly resourceArn: string;
+}
+
 /**
  * Represents a Backup Selection.
  */
@@ -36,7 +44,7 @@ export interface IBackupSelection extends IResource {
    * Optional resources' ARN to select.
    * @attribute
    */
-  readonly resources?: string[];
+  readonly resources?: BackupResource[];
 }
 
 abstract class BackupSelectionBase extends Resource implements IBackupSelection {
@@ -45,7 +53,7 @@ abstract class BackupSelectionBase extends Resource implements IBackupSelection 
   public abstract readonly backupSelectionBackupPlanId: string;
   public abstract readonly backupSelectionSelectionId: string;
   public abstract readonly role?: iam.IRole;
-  public abstract readonly resources?: string[];
+  public abstract readonly resources?: BackupResource[];
 }
 
 /**
@@ -88,7 +96,7 @@ export interface BackupSelectionProps {
    * A list of ARNs to backup.
    * @default to no resources.
    */
-  readonly resources?: string[];
+  readonly resources?: BackupResource[];
 }
 
 /**
@@ -104,7 +112,7 @@ export class BackupSelection extends BackupSelectionBase {
       public readonly backupPlan: IBackupPlan = attrs.backupPlan;
       public readonly backupSelectionBackupPlanId: string = attrs.backupPlan.backupPlanId;
       public readonly backupSelectionSelectionId: string = attrs.backupSelectionSelectionId;
-      public readonly resources?: string[]; // dropped
+      public readonly resources?: BackupResource[]; // dropped
       public readonly role?: iam.IRole; // dropped
     }
 
@@ -116,20 +124,25 @@ export class BackupSelection extends BackupSelectionBase {
   public readonly backupSelectionBackupPlanId: string;
   public readonly backupSelectionSelectionId: string;
   public readonly role?: iam.IRole;
-  public readonly resources?: string[];
+  public readonly resources?: BackupResource[];
 
   constructor(scope: Construct, id: string, props: BackupSelectionProps) {
-    super(scope, id);
+    super(scope, id, {
+      physicalName: props.backupSelectionName,
+    });
+
     this.backupPlan = props.backupPlan;
     this.backupSelectionBackupPlanId = this.backupPlan.backupPlanId;
-    this.backupSelectionName = props.backupSelectionName;
+
+    this.backupSelectionName = this.physicalName;
+    this.resources = props.resources;
 
     const resource = new CfnBackupSelection(this, 'Resource', {
       backupPlanId: this.backupPlan.backupPlanName,
       backupSelection: {
         selectionName: this.backupSelectionName,
         iamRoleArn: this.parseRole(props).roleArn,
-        resources: props.resources,
+        resources: this.resources.map(res => res.resourceArn),
       }
     });
 

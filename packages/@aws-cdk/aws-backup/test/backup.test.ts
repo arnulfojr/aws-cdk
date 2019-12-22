@@ -236,10 +236,8 @@ export = testCase({
     });
     backupPlan.addPlanRule({
       ruleName: 'PandaRule',
-      lifecycle: {
-        deleteAfter,
-        moveToColdStorageAfter,
-      },
+      deleteAfter,
+      moveToColdStorageAfter,
       schedule,
     });
 
@@ -277,7 +275,7 @@ export = testCase({
     });
     const schedule = Schedule.cron({hour: '4'});
     const completionWindow = cdk.Duration.hours(2);
-    const startWindowAfter = cdk.Duration.hours(1);
+    const startWindow = cdk.Duration.hours(1);
 
     // WHEN
     new BackupPlan(stack, 'Plan Z', {
@@ -286,7 +284,7 @@ export = testCase({
         ruleName: 'Plan Z v1',
         schedule,
         completionWindow,
-        startWindowAfter,
+        startWindow,
       }],
       vault,
     });
@@ -303,7 +301,7 @@ export = testCase({
               Ref: 'MyBackupVaultC4DF6F64',
             },
             CompletionWindowMinutes: completionWindow.toMinutes(),
-            StartWindowMinutes: startWindowAfter.toMinutes(),
+            StartWindowMinutes: startWindow.toMinutes(),
           }
         ],
       }
