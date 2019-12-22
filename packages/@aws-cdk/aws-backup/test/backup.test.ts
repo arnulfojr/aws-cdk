@@ -236,10 +236,8 @@ export = testCase({
     });
     backupPlan.addPlanRule({
       ruleName: 'PandaRule',
-      lifecycle: {
-        deleteAfter,
-        moveToColdStorageAfter,
-      },
+      deleteAfter,
+      moveToColdStorageAfter,
       schedule,
     });
 

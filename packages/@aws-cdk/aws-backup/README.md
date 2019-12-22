@@ -5,8 +5,8 @@
 
 ![Stability: Experimental](https://img.shields.io/badge/stability-Experimental-important.svg?style=for-the-badge)
 
-> **This is a _developer preview_ (public beta) module. Releases might lack important features and might have
-> future breaking changes.**
+> This is a _developer preview_ (public beta) module. Releases might lack important features and might have
+> future breaking changes.
 >
 > This API is still under active development and subject to non-backward
 > compatible changes or removal in any future version. Use of the API is not recommended in production
@@ -24,8 +24,7 @@ import backup = require('@aws-cdk/aws-backup');
 
 ### Backup vaults
 
-The place where all backups will be stores is called a vault.
-Create a backup vault for all the backups.
+In AWS Backup, a backup vault is a container that you organize your backups in.
 
 ```ts
 new backup.BackupVault(this, 'MyVault', {
@@ -33,7 +32,10 @@ new backup.BackupVault(this, 'MyVault', {
 });
 ```
 
-You can also provide your own encryption key to encrypt your backups in the vault.
+You can use backup vaults to set the AWS Key Management Service (AWS KMS) encryption key that is
+used to encrypt backups in the backup vault and to control access to the backups in the backup vault.
+If you require different encryption keys or access policies for different groups of backups,
+you can optionally create multiple backup vaults.
 
 ```ts
 new backup.BackupVault(this, 'MyVault', {
@@ -44,9 +46,17 @@ new backup.BackupVault(this, 'MyVault', {
 });
 ```
 
+See [Backup Vaults](https://docs.aws.amazon.com/aws-backup/latest/devguide/vaults.html)
+in the Amazon Developer Guide.
+
 ### Backup Plan
 
-A backup plan specifies the frequency of the backups and the lifecycle of the backups.
+In AWS Backup, a backup plan is a policy expression that defines when and how
+you want to back up your AWS resources, such as Amazon DynamoDB tables or
+Amazon Elastic File System (Amazon EFS) file systems.
+You can assign resources to backup plans, and AWS Backup automatically backs up and
+retains backups for those resources according to the backup plan.
+You can create multiple backup plans if you have workloads with different backup requirements. 
 
 ```ts
 new backup.BackupPlan(this, 'MyBackupPlan', {
@@ -67,7 +77,13 @@ new backup.BackupPlan(this, 'MyBackupPlan', {
 });
 ```
 
+See [Backup Plans](https://docs.aws.amazon.com/aws-backup/latest/devguide/about-backup-plans.html)
+in the Amazon Developer Guide.
+
 ### Backup selections
+
+When you assign a selection of resources to a backup plan, that resource is backed up automatically according to the backup plan.
+The backups for that resource are managed according to the backup plan.
 
 ```ts
 new backup.BackupSelection(this, 'MySelections', {
@@ -75,6 +91,9 @@ new backup.BackupSelection(this, 'MySelections', {
   resources: dynamoTables.map(table => table.tableArn),
 });
 ```
+
+See [Assigning Resources to a Backup Plan](https://docs.aws.amazon.com/aws-backup/latest/devguide/assigning-resources.html)
+in the Amazon Developer Guide.
 
 ### Wiring it all up together
 

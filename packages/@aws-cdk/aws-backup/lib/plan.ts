@@ -1,24 +1,8 @@
-import {Schedule} from '@aws-cdk/aws-events';
-import {Construct, Duration, IResource, Lazy, Resource} from '@aws-cdk/core';
-import {CfnBackupPlan} from './backup.generated';
-import {IBackupVault} from './vault';
-
-/**
- * Represents the Lifecycle configuration of the backup resources.
- */
-export interface Lifecycle {
-  /**
-   * Specifies how long a backup lasts before being deleted.
-   * Once a backup is moved into a cold storage class, it has to live 90 days
-   * before it can be deleted, therefore this value has to be 90 days greater.
-   */
-  readonly deleteAfter: Duration;
-  /**
-   * Specifies how long a backup will stay in warm storage before being moved
-   * to a cold storage class.
-   */
-  readonly moveToColdStorageAfter: Duration;
-}
+import { Schedule } from '@aws-cdk/aws-events';
+import { Construct, Duration, IResource, Lazy, Resource } from '@aws-cdk/core';
+import { CfnBackupPlan } from './backup.generated';
+import { BackupSelection, BackupResource } from './selection';
+import { IBackupVault } from './vault';
 
 /**
  * Represents the backup plan rule configuration.
@@ -32,7 +16,7 @@ export interface PlanRule {
   /**
    * Optional backup vault to store the backups from this rule.
    * If specified, this vault will be used instead of the one specified in the plan.
-   * @default to BackUpPlan's vault.
+   * @default - BackUpPlan's vault.
    */
   readonly vault?: IBackupVault;
   /**
@@ -41,21 +25,32 @@ export interface PlanRule {
    */
   readonly schedule: Schedule;
   /**
-   * The lifecycle specification for managing the backup resources.
-   * @see https://docs.aws.amazon.com/aws-backup/latest/devguide/creating-a-backup-plan.html
-   * @default resources have not lifecycle
+   * Specifies how long a backup lasts before being deleted.
+   * Once a backup is moved into a cold storage class, it has to live 90 days
+   * before it can be deleted, therefore this value has to be 90 days greater.
+   * @see https://docs.aws.amazon.com/aws-backup/latest/devguide/API_Lifecycle.html
+   * @default - Backups wont be deleted.
    */
-  readonly lifecycle?: Lifecycle;
+  readonly deleteAfter?: Duration;
+  /**
+   * Specifies how long a backup will stay in warm storage before being moved
+   * to a cold storage class.
+   * @see https://docs.aws.amazon.com/aws-backup/latest/devguide/API_Lifecycle.html
+   * @default - Backups wont be moved to cold storage.
+   */
+  readonly moveToColdStorageAfter?: Duration;
   /**
    * The time in which a backup job has to be completed before being cancelled.
-   * @default backup window is set to start at 5AM UTC and lasts 8 hours.
+   * @see https://docs.aws.amazon.com/aws-backup/latest/devguide/API_BackupRule.html
+   * @default - sets the start at 5AM UTC and lasts 8 hours.
    */
   readonly completionWindow?: Duration;
   /**
-   * The time after a backup is scheduled before a job is canceled if it doesn't start successfully.
-   * @default backup window is set to start at 5AM UTC and lasts 8 hours.
+   * The amount of time in minutes before beginning a backup.
+   * @see https://docs.aws.amazon.com/aws-backup/latest/devguide/API_BackupRule.html
+   * @default - No start window.
    */
-  readonly startWindowAfter?: Duration;
+  readonly startWindow?: Duration;
 }
 
 /**
@@ -128,9 +123,10 @@ export interface BackupPlanAttributes {
  */
 export interface BackupPlanProps {
   /**
-   * The name of the backup plan
+   * The name of the backup plan.
+   * @default - Assigned by CloudFormation.
    */
-  readonly backupPlanName: string;
+  readonly backupPlanName?: string;
   /**
    * A list of plan rules to assign to the plan.
    */
@@ -177,21 +173,23 @@ export class BackupPlan extends BackupPlanBase {
    */
   public readonly vault: IBackupVault;
   /**
-   * A list of rules that specify the rules of the plan.
-   */
-  public rules: PlanRule[];
-  /**
    * The backup plan name.
    */
   public readonly backupPlanName: string;
+  /**
+   * A list of rules that specify the rules of the plan.
+   */
+  private rules: PlanRule[];
 
   constructor(scope: Construct, id: string, props: BackupPlanProps) {
-    super(scope, id);
+    super(scope, id, {
+      physicalName: props.backupPlanName,
+    });
 
     const resource = new CfnBackupPlan(this, 'Resource', {
       backupPlan: {
-        backupPlanName: props.backupPlanName,
-        backupPlanRule: Lazy.anyValue({produce: () => this.renderPlanRules(this.rules)}),
+        backupPlanName: this.physicalName,
+        backupPlanRule: Lazy.anyValue({ produce: () => this.renderPlanRules(this.rules) }),
       },
     });
 
@@ -215,6 +213,17 @@ export class BackupPlan extends BackupPlanBase {
     this.rules = [...this.rules, ...rules];
   }
 
+  /**
+   * Adds the selected resources to the backup plan.
+   */
+  public addSelection(name: string, ...resources: BackupResource[]) {
+    new BackupSelection(this, name, {
+      backupPlan: this,
+      backupSelectionName: name,
+      resources,
+    });
+  }
+
   private renderPlanRules(rules: PlanRule[]): undefined | CfnBackupPlan.BackupRuleResourceTypeProperty[] {
     if (!rules) {
       return undefined;
@@ -225,8 +234,8 @@ export class BackupPlan extends BackupPlanBase {
         ruleName: rule.ruleName,
         targetBackupVault: rule.vault ? rule.vault.backupVaultName : this.vault.backupVaultName,
         completionWindowMinutes: rule.completionWindow ? rule.completionWindow.toMinutes() : undefined,
-        startWindowMinutes: rule.startWindowAfter ? rule.startWindowAfter.toMinutes() : undefined,
-        lifecycle: this.parseRuleLifecycle(rule.lifecycle),
+        startWindowMinutes: rule.startWindow ? rule.startWindow.toMinutes() : undefined,
+        lifecycle: this.parseRuleLifecycle(rule),
         scheduleExpression: rule.schedule.expressionString
       };
     });
@@ -234,13 +243,13 @@ export class BackupPlan extends BackupPlanBase {
     return backupRuleResourceTypes;
   }
 
-  private parseRuleLifecycle(lifecycle?: Lifecycle) {
-    if (!lifecycle) {
+  private parseRuleLifecycle(planRule: PlanRule) {
+    if (!planRule.deleteAfter && !planRule.moveToColdStorageAfter) {
       return undefined;
     }
 
-    const deleteAfterDays = lifecycle.deleteAfter ? lifecycle.deleteAfter.toDays() : undefined;
-    const moveToColdStorageAfterDays = lifecycle.moveToColdStorageAfter ? lifecycle.moveToColdStorageAfter.toDays() : undefined;
+    const deleteAfterDays = planRule.deleteAfter ? planRule.deleteAfter.toDays() : undefined;
+    const moveToColdStorageAfterDays = planRule.moveToColdStorageAfter ? planRule.moveToColdStorageAfter.toDays() : undefined;
 
     if (deleteAfterDays && moveToColdStorageAfterDays) {
       if ((deleteAfterDays - moveToColdStorageAfterDays) < 90) {
