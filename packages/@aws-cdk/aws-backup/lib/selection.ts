@@ -1,11 +1,21 @@
-import iam = require('@aws-cdk/aws-iam');
-import { Construct, IResource, Resource } from '@aws-cdk/core';
-import { CfnBackupSelection } from './backup.generated';
-import { IBackupPlan } from './plan';
+import * as dynamoDb from "@aws-cdk/aws-dynamodb";
+import * as iam from "@aws-cdk/aws-iam";
+import * as rds from "@aws-cdk/aws-rds";
+import { Construct, IResource, Lazy, Resource } from "@aws-cdk/core";
+import { CfnBackupSelection } from "./backup.generated";
+import { IBackupPlan } from "./plan";
 
 export abstract class BackupResource {
-  public static fromDynamoDBTable(table: any): BackupResource {
+  public static fromDynamoDBTable(table: dynamoDb.ITable): BackupResource {
     return { resourceArn: table.tableArn };
+  }
+
+  public static fromRDSDatabase(rdsDb: rds.IDatabaseInstance): BackupResource {
+    return { resourceArn: rdsDb.instanceArn };
+  }
+
+  public static fromResourceArn(resourceArn: string): BackupResource {
+    return { resourceArn };
   }
 
   public abstract readonly resourceArn: string;
@@ -47,13 +57,12 @@ export interface IBackupSelection extends IResource {
   readonly resources?: BackupResource[];
 }
 
-abstract class BackupSelectionBase extends Resource implements IBackupSelection {
+abstract class BackupSelectionBase extends Resource
+  implements IBackupSelection {
   public abstract readonly backupSelectionName: string;
   public abstract readonly backupPlan: IBackupPlan;
   public abstract readonly backupSelectionBackupPlanId: string;
   public abstract readonly backupSelectionSelectionId: string;
-  public abstract readonly role?: iam.IRole;
-  public abstract readonly resources?: BackupResource[];
 }
 
 /**
@@ -106,14 +115,18 @@ export class BackupSelection extends BackupSelectionBase {
   /**
    * Imports a backup selection based from the given attributes.
    */
-  public static fromBackupSelectionAttributes(scope: Construct, id: string, attrs: BackupSelectionAttributes): IBackupSelection {
+  public static fromBackupSelectionAttributes(
+    scope: Construct,
+    id: string,
+    attrs: BackupSelectionAttributes
+  ): IBackupSelection {
     class Import extends BackupSelectionBase {
       public readonly backupSelectionName: string = attrs.backupSelectionName;
       public readonly backupPlan: IBackupPlan = attrs.backupPlan;
-      public readonly backupSelectionBackupPlanId: string = attrs.backupPlan.backupPlanId;
-      public readonly backupSelectionSelectionId: string = attrs.backupSelectionSelectionId;
-      public readonly resources?: BackupResource[]; // dropped
-      public readonly role?: iam.IRole; // dropped
+      public readonly backupSelectionBackupPlanId: string =
+        attrs.backupPlan.backupPlanId;
+      public readonly backupSelectionSelectionId: string =
+        attrs.backupSelectionSelectionId;
     }
 
     return new Import(scope, id);
@@ -135,19 +148,25 @@ export class BackupSelection extends BackupSelectionBase {
     this.backupSelectionBackupPlanId = this.backupPlan.backupPlanId;
 
     this.backupSelectionName = this.physicalName;
-    this.resources = props.resources;
+    this.resources = props.resources || [];
 
-    const resource = new CfnBackupSelection(this, 'Resource', {
-      backupPlanId: this.backupPlan.backupPlanName,
+    const resource = new CfnBackupSelection(this, "Resource", {
+      backupPlanId: this.backupPlan.backupPlanId,
       backupSelection: {
         selectionName: this.backupSelectionName,
         iamRoleArn: this.parseRole(props).roleArn,
-        resources: this.resources.map(res => res.resourceArn),
-      }
+        resources: Lazy.listValue({
+          produce: () => this.resources!.map((r) => r.resourceArn),
+        }),
+      },
     });
 
     this.backupSelectionSelectionId = resource.attrSelectionId;
     this.backupSelectionBackupPlanId = resource.attrBackupPlanId;
+  }
+
+  public addResources(...resources: BackupResource[]): void {
+    this.resources!.push(...resources);
   }
 
   private parseRole(props: BackupSelectionProps): iam.IRole {
@@ -155,11 +174,13 @@ export class BackupSelection extends BackupSelectionBase {
       return props.role;
     }
 
-    const role = new iam.Role(this, 'Role', {
-      assumedBy: new iam.ServicePrincipal('backup.amazonaws.com'),
+    const role = new iam.Role(this, "Role", {
+      assumedBy: new iam.ServicePrincipal("backup.amazonaws.com"),
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSBackupServiceRolePolicyForBackup')
-      ]
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AWSBackupServiceRolePolicyForBackup"
+        ),
+      ],
     });
 
     return role;

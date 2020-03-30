@@ -1,8 +1,8 @@
-import iam = require('@aws-cdk/aws-iam');
-import kms = require('@aws-cdk/aws-kms');
-import sns = require('@aws-cdk/aws-sns');
-import { Construct, IResource, Resource } from '@aws-cdk/core';
-import { CfnBackupVault } from './backup.generated';
+import * as iam from "@aws-cdk/aws-iam";
+import * as kms from "@aws-cdk/aws-kms";
+import * as sns from "@aws-cdk/aws-sns";
+import { Construct, IResource, Resource } from "@aws-cdk/core";
+import { CfnBackupVault } from "./backup.generated";
 
 /**
  * Represents a Backup vault.
@@ -13,24 +13,6 @@ export interface IBackupVault extends IResource {
    * @attribute
    */
   readonly backupVaultName: string;
-
-  /**
-   * The ARN of the vault.
-   * @attribute
-   */
-  readonly backupVaultArn: string;
-
-  /**
-   * Optional KMS encryption key to associate to the Vault.
-   * @attribute
-   */
-  readonly encryptionKey?: kms.IKey;
-
-  /**
-   * Optional access policy document.
-   * @attribute
-   */
-  readonly accessPolicy?: iam.PolicyDocument;
 }
 
 /**
@@ -40,9 +22,6 @@ export interface IBackupVault extends IResource {
  */
 abstract class BackupVaultBase extends Resource implements IBackupVault {
   public abstract readonly backupVaultName: string;
-  public abstract readonly backupVaultArn: string;
-  public abstract readonly encryptionKey?: kms.IKey;
-  public abstract readonly accessPolicy?: iam.PolicyDocument;
 }
 
 /**
@@ -55,47 +34,33 @@ export enum EventType {
   /**
    * Event for when a backup job has started.
    */
-  BACKUP_JOB_STARTED = 'BACKUP_JOB_STARTED',
+  BACKUP_JOB_STARTED = "BACKUP_JOB_STARTED",
   /**
    * Event for when a backup job has been completed.
    * This event contains successful and failed backup jobs.
    */
-  BACKUP_JOB_COMPLETED = 'BACKUP_JOB_COMPLETED',
+  BACKUP_JOB_COMPLETED = "BACKUP_JOB_COMPLETED",
   /**
    * Event for when a backup plan has been created.
    */
-  BACKUP_PLAN_CREATED = 'BACKUP_PLAN_CREATED',
+  BACKUP_PLAN_CREATED = "BACKUP_PLAN_CREATED",
   /**
    * Event for when a backup plan has been modified.
    */
-  BACKUP_PLAN_MODIFIED = 'BACKUP_PLAN_MODIFIED',
+  BACKUP_PLAN_MODIFIED = "BACKUP_PLAN_MODIFIED",
   /**
    * Event for when a restore job has been started.
    */
-  RESTORE_JOB_STARTED = 'RESTORE_JOB_STARTED',
+  RESTORE_JOB_STARTED = "RESTORE_JOB_STARTED",
   /**
    * Event for when the restore job has completed.
    * This event contains successful and failed restore jobs.
    */
-  RESTORE_JOB_COMPLETED = 'RESTORE_JOB_COMPLETED',
+  RESTORE_JOB_COMPLETED = "RESTORE_JOB_COMPLETED",
   /**
    * Event for when the recovery point has been modified.
    */
-  RECOVERY_POINT_MODIFIED = 'RECOVERY_POINT_MODIFIED',
-}
-
-/**
- * Represents the configuration of a vault's notification.
- */
-export interface VaultNotifications {
-  /**
-   * An SNS topic in which AWS Backup service will publish all the events.
-   */
-  readonly topic: sns.ITopic;
-  /**
-   * All the event that will get published into the topic.
-   */
-  readonly events: EventType[];
+  RECOVERY_POINT_MODIFIED = "RECOVERY_POINT_MODIFIED",
 }
 
 /**
@@ -111,18 +76,23 @@ export interface BackupVaultProps {
   /**
    * Optional KMS Key to encrypt the backups.
    * @see https://docs.aws.amazon.com/aws-backup/latest/devguide/creating-a-vault.html
-   * @default Backup Service will create one with the alias `aws/backup`.
+   * @default - Backup Service will create one with the alias `aws/backup`.
    */
   readonly encryptionKey?: kms.IKey;
   /**
-   * Notification configuration based on SNS Topics.
-   * @default configures no notifications
+   * An SNS topic in which AWS Backup service will publish all the events.
+   * @default - no notifications are configured by default.
    */
-  readonly notifications?: VaultNotifications;
+  readonly notificationTopic?: sns.ITopic;
+  /**
+   * All the event that will get published into the topic.
+   * @default - if a notification topic is provided, all events are registered.
+   */
+  readonly notificationEvents?: EventType[];
   /**
    * Optional access policy for the vault.
    * @see https://docs.aws.amazon.com/aws-backup/latest/devguide/creating-a-vault-access-policy.html
-   * @default Has not access policy.
+   * @default - access is not restricted.
    */
   readonly accessPolicy?: iam.PolicyDocument;
 }
@@ -131,10 +101,6 @@ export interface BackupVaultProps {
  * Represents the attributes from a backup vault.
  */
 export interface BackupVaultAttributes {
-  /**
-   * An ARN string representations.
-   */
-  readonly backupVaultArn: string;
   /**
    * A string representation of the backup vault's name.
    */
@@ -145,16 +111,16 @@ export interface BackupVaultAttributes {
  * Backup Vault where all backups will be stored.
  */
 export class BackupVault extends BackupVaultBase {
-
   /**
    * Import a backup Vault.
    */
-  public static fromBackupVaultAttributes(scope: Construct, id: string, attrs: BackupVaultAttributes): IBackupVault {
+  public static fromBackupVaultAttributes(
+    scope: Construct,
+    id: string,
+    attrs: BackupVaultAttributes
+  ): IBackupVault {
     class Import extends BackupVaultBase {
-      public readonly backupVaultArn = attrs.backupVaultArn;
       public readonly backupVaultName = attrs.backupVaultName;
-      public readonly accessPolicy?: iam.PolicyDocument; // dropped
-      public readonly encryptionKey?: kms.IKey; // dropped
     }
 
     return new Import(scope, id);
@@ -166,37 +132,60 @@ export class BackupVault extends BackupVaultBase {
   public readonly accessPolicy?: iam.PolicyDocument;
 
   constructor(scope: Construct, id: string, props: BackupVaultProps) {
-    super(scope, id, {
-      physicalName: props.backupVaultName
-    });
+    super(scope, id);
 
-    const accessPolicy = props.accessPolicy;
-    const encryptionKeyArn = props.encryptionKey ? props.encryptionKey.keyArn : undefined;
-    const notifications = this.renderNotifications(props.notifications);
+    this.backupVaultName = props.backupVaultName || this.node.uniqueId;
+    const accessPolicy = props.accessPolicy && props.accessPolicy.toJSON();
+    const encryptionKeyArn = props.encryptionKey
+      ? props.encryptionKey.keyArn
+      : undefined;
 
-    const resource = new CfnBackupVault(this, 'Resource', {
-      backupVaultName: this.physicalName,
+    const notifications = this.renderNotifications(
+      props.notificationTopic,
+      props.notificationEvents
+    );
+
+    const resource = new CfnBackupVault(this, "Resource", {
+      backupVaultName: this.backupVaultName,
       encryptionKeyArn,
       accessPolicy,
       notifications,
     });
 
-    this.backupVaultName = this.getResourceNameAttribute(resource.ref);
-    this.backupVaultArn = this.getResourceArnAttribute(resource.attrBackupVaultArn, {
-      service: 'backup',
-      resource: 'backup-vault',
-      resourceName: this.backupVaultName,
-    });
+    this.backupVaultArn = this.getResourceArnAttribute(
+      resource.attrBackupVaultArn,
+      {
+        service: "backup",
+        resource: "backup-vault",
+        resourceName: this.backupVaultName,
+      }
+    );
   }
 
-  private renderNotifications(notifications?: VaultNotifications): CfnBackupVault.NotificationObjectTypeProperty | undefined {
-    if (!notifications) {
+  private renderNotifications(
+    topic?: sns.ITopic,
+    events: EventType[] = []
+  ): CfnBackupVault.NotificationObjectTypeProperty | undefined {
+    if (!topic) {
       return undefined;
     }
 
+    let backupVaultEvents = events;
+    if (backupVaultEvents.length === 0) {
+      backupVaultEvents = [
+        EventType.BACKUP_JOB_STARTED,
+        EventType.BACKUP_JOB_COMPLETED,
+        EventType.BACKUP_PLAN_CREATED,
+        EventType.BACKUP_PLAN_MODIFIED,
+        EventType.RESTORE_JOB_STARTED,
+        EventType.RESTORE_JOB_COMPLETED,
+        EventType.RECOVERY_POINT_MODIFIED
+      ];
+    }
+
     return {
-      backupVaultEvents: notifications.events,
-      snsTopicArn: notifications.topic.topicArn,
+      backupVaultEvents,
+      snsTopicArn: topic.topicArn,
     };
   }
 }

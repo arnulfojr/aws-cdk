@@ -1,5 +1,3 @@
-import { Duration } from '@aws-cdk/core';
-
 /**
  * Schedule for scheduled backup plans
  */
@@ -11,27 +9,6 @@ export abstract class Schedule {
    */
   public static expression(expression: string): Schedule {
     return new LiteralSchedule(expression);
-  }
-
-  /**
-   * Construct a schedule from an interval and a time unit
-   */
-  public static rate(duration: Duration): Schedule {
-    if (duration.toSeconds() === 0) {
-      throw new Error('Duration cannot be 0');
-    }
-
-    let rate = maybeRate(duration.toDays({ integral: false }), 'day');
-    if (rate === undefined) { rate = maybeRate(duration.toHours({ integral: false }), 'hour'); }
-    if (rate === undefined) { rate = makeRate(duration.toMinutes({ integral: true }), 'minute'); }
-    return new LiteralSchedule(rate);
-  }
-
-  /**
-   * Construct a Schedule from a moment in time
-   */
-  public static at(moment: Date): Schedule {
-    return new LiteralSchedule(`at(${formatISO(moment)})`);
   }
 
   /**
@@ -123,37 +100,4 @@ class LiteralSchedule extends Schedule {
 
 function fallback<T>(x: T | undefined, def: T): T {
   return x === undefined ? def : x;
-}
-
-function formatISO(date?: Date) {
-  if (!date) { return undefined; }
-
-  return date.getUTCFullYear() +
-    '-' + pad(date.getUTCMonth() + 1) +
-    '-' + pad(date.getUTCDate()) +
-    'T' + pad(date.getUTCHours()) +
-    ':' + pad(date.getUTCMinutes()) +
-    ':' + pad(date.getUTCSeconds());
-
-  function pad(num: number) {
-    if (num < 10) {
-      return '0' + num;
-    }
-    return num;
-  }
-}
-
-/**
- * Return the rate if the rate is whole number
- */
-function maybeRate(interval: number, singular: string) {
-  if (interval === 0 || !Number.isInteger(interval)) { return undefined; }
-  return makeRate(interval, singular);
-}
-
-/**
- * Return 'rate(${interval} ${singular}(s))` for the interval
- */
-function makeRate(interval: number, singular: string) {
-  return interval === 1 ? `rate(1 ${singular})` : `rate(${interval} ${singular}s)`;
 }
