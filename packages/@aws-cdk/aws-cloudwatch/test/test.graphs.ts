@@ -317,6 +317,38 @@ export = {
     test.done();
   },
 
+  'query result widget - account'(test: Test) {
+    // GIVEN
+    const stack = new Stack();
+    const logGroup = { logGroupName: 'my-log-group' };
+    const account = "123456789098";
+
+    // WHEN
+    const widget = new LogQueryWidget({
+      logGroupNames: [logGroup.logGroupName],
+      view: LogQueryVisualizationType.TABLE,
+      queryLines: [
+        'fields @message',
+        'filter @message like /Error/',
+      ],
+      account,
+    });
+
+    // THEN
+    test.deepEqual(stack.resolve(widget.toJson()), [{
+      type: 'log',
+      width: 6,
+      height: 6,
+      properties: {
+        view: 'table',
+        stacked: true,
+        region: { Ref: 'AWS::Region' },
+        acccountId: account,
+        query: `SOURCE '${logGroup.logGroupName}' | fields @message\n| filter @message like /Error/`,
+      },
+    }])
+  },
+
   'alarm widget'(test: Test) {
     // GIVEN
     const stack = new Stack();

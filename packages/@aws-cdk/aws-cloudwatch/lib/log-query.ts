@@ -63,11 +63,18 @@ export interface LogQueryWidgetProps {
   readonly queryLines?: string[];
 
   /**
-   * The region the metrics of this widget should be taken from
+   * The region containing the log groups
    *
-   * @default Current region
+   * @default - Current region
    */
   readonly region?: string;
+
+  /**
+   * The account containing the log groups
+   *
+   * @default - Deployment account.
+   */
+  readonly account?: string;
 
   /**
    * The type of view to use
@@ -121,6 +128,7 @@ export class LogQueryWidget extends ConcreteWidget {
       title: this.props.title,
       region: this.props.region || cdk.Aws.REGION,
       query: `${sources} | ${query}`,
+      accountId: this.props.account,
     };
 
     // adding stacked property in case of LINE or STACKEDAREA
