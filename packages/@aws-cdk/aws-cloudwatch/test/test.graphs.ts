@@ -321,7 +321,6 @@ export = {
     // GIVEN
     const stack = new Stack();
     const logGroup = { logGroupName: 'my-log-group' };
-    const account = "123456789098";
 
     // WHEN
     const widget = new LogQueryWidget({
@@ -331,7 +330,7 @@ export = {
         'fields @message',
         'filter @message like /Error/',
       ],
-      account,
+      account: '123456789098',
     });
 
     // THEN
@@ -343,10 +342,10 @@ export = {
         view: 'table',
         stacked: true,
         region: { Ref: 'AWS::Region' },
-        acccountId: account,
+        acccountId: '123456789098',
         query: `SOURCE '${logGroup.logGroupName}' | fields @message\n| filter @message like /Error/`,
       },
-    }])
+    }]);
   },
 
   'alarm widget'(test: Test) {
