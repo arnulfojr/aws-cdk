@@ -342,7 +342,7 @@ export = {
         view: 'table',
         stacked: true,
         region: { Ref: 'AWS::Region' },
-        acccountId: '123456789098',
+        accountId: '123456789098',
         query: `SOURCE '${logGroup.logGroupName}' | fields @message\n| filter @message like /Error/`,
       },
     }]);
