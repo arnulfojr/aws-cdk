@@ -1092,6 +1092,25 @@ myEndpoint.connections.allowDefaultPortFromAnyIpv4();
 
 Alternatively, existing security groups can be used by specifying the `securityGroups` prop.
 
+#### IPv6 and Dualstack support
+
+As IPv4 addresses are running out, many AWS services are adding support for IPv6 or Dualstack (IPv4 and IPv6 support) for their VPC Endpoints. IPv6 and Dualstack address types can be configured by using:
+
+```ts
+vpc.addInterfaceEndpoint('ExampleEndpoint', {
+  service: InterfaceVpcEndpointAwsService.ExampleEndpoint,
+  ipAddressType: VpcEndpointIpAddressType.IPV6,
+  dnsRecordIpType: VpcEndpointDnsRecordIpType.IPV6,
+})
+```
+To prevent compatability issues, when DNS record IP type is:
+* IPv4, `ipAddressType` must be IPv4 or Dualstack.
+* IPv6, `ipAddressType` must be IPv6 or Dualstack.
+* Dualstack, `ipAddressType` must be Dualstack.
+* Service defined, `ipAddressType` must be Dualstack. 
+
+More documentation on compatability and specifications can be found [here](https://docs.aws.amazon.com/vpc/latest/privatelink/create-endpoint-service.html#connect-to-endpoint-service)
+
 ### VPC endpoint services
 
 A VPC endpoint service enables you to expose a Network Load Balancer(s) as a provider service to consumers, who connect to your service over a VPC endpoint. You can restrict access to your service via allowed principals (anything that extends ArnPrincipal), and require that new connections be manually accepted. You can also enable Contributor Insight rules.
